@@ -19,6 +19,9 @@ FILE_NAME_INPUT = os.getenv("FILE_NAME_INPUT")
 FILE_PATH_OUTPUT = os.getenv("FILE_PATH_OUTPUT")
 FILE_NAME_OUTPUT = os.getenv("FILE_NAME_OUTPUT")
 
+SAMPLE_PREFIX = os.getenv("SAMPLE_PREFIX", "BIO")
+FEATURE_ID_COLNAME = os.getenv("FEATURE_ID_COLNAME", "row ID")
+
 IS_COL = os.getenv("IS_COL", "11974")
 DEFAULT_ZERO_THRESHOLD = float(os.getenv("DEFAULT_ZERO_THRESHOLD", 0.2))
 SAVE_INTERMEDIATE = get_bool_env("SAVE_INTERMEDIATE", True)
@@ -59,6 +62,58 @@ try:
     logging.info(f"Input CSV file ({FILE_NAME_INPUT}) loaded successfully.")
 except Exception as e:
     logging.error(f"Error loading CSV file: {e}")
+    sys.exit(1)
+
+
+# Step 0.5: Orientation checks & transpose if needed
+# Rules:
+#   - If IS_COL is present as a column => assume CORRECT (samples as rows)
+#   - Else transpose.
+#   - If any column starts with SAMPLE_PREFIX (e.g., 'BIO-') => assume RP-style and TRANSPOSE.
+try:
+    sample_cols = [c for c in df.columns if str(c).startswith(SAMPLE_PREFIX)]
+    meta_cols   = [c for c in df.columns if c not in sample_cols]
+
+    need_transpose = (IS_COL not in df.columns) or (len(sample_cols) > 0)
+    if need_transpose:
+        id_col = FEATURE_ID_COLNAME if FEATURE_ID_COLNAME in meta_cols else (meta_cols[0] if meta_cols else df.columns[0])
+        logging.info(f"Transpose: using feature id column '{id_col}'. meta_cols={len(meta_cols)}; sample_cols={len(sample_cols)}")
+        
+        # Build a samples x features table from: [id_col] + sample columns
+        t = (
+            df[[id_col] + sample_cols]
+              .set_index(id_col)
+              .T
+              .reset_index()
+              .rename(columns={"index": "row ID"})
+        )
+
+        # Ensure required metadata columns exist for downstream steps
+        if "Metabolomics_sequence" not in t.columns:
+            t["Metabolomics_sequence"] = "1a"
+        if "batch" not in t.columns:
+            t["batch"] = "1a"
+
+        # Reorder metadata first, keep all feature columns (the transposed ids)
+        meta_first = ["row ID", "Metabolomics_sequence", "batch"]
+        remaining = [c for c in t.columns if c not in meta_first]
+        df = t[meta_first + remaining]
+                # Canonicalize feature column names to strings (avoid int/float vs str mismatches)
+        rename_map = {c: str(c) for c in remaining}
+        df = df.rename(columns=rename_map)
+        logging.info(f"After transpose, first 5 feature columns: {list(rename_map.values())[:5]}")
+
+        logging.info(f"Transpose complete. New shape={df.shape}. Samples={len(df)}; Features={len(remaining)}")
+
+        df.to_csv(os.path.join(OUTPUT_DIR, "transposed_input_file.csv"), index=False)
+    else:
+        logging.info("Orientation check: looks correct (IS_COL present and no SAMPLE_PREFIX columns). No transpose performed.")
+except Exception as e:
+    logging.error(f"Error during orientation check/transpose: {e}")
+    sys.exit(1)
+
+# Keeping a copy of raw data for later RSD calculations
+raw_df = df.copy()
 
 
 # Step 1: Identify feature columns 
@@ -213,47 +268,39 @@ final_df.head()
 logging.info(f"Step 10: Preview the result: {final_df.head()}")
 
 
-# Step 11: Reload raw data
-try:
-    raw_df = pd.read_csv(FILE_PATH_INPUT + '/' + FILE_NAME_INPUT)
-    logging.info(f"Step 11. Reloaded input CSV ({FILE_NAME_INPUT}).")
-except Exception as e:
-    logging.error(f"Error in reloading input CSV: {e}")
-
-
-# Step 12: Get feature columns from final_df (only retained features)
+# Step 11: Get feature columns from final_df (only retained features)
 try:
     feature_cols = [col for col in final_df.columns if col not in non_feature_cols]
     # Raw feature columns (intersect only those retained in final_df)
     raw_feature_cols = [col for col in raw_df.columns if col in feature_cols]
-    logging.info("Step 12: Getting feature columns complete.")
+    logging.info("Step 11: Getting feature columns complete.")
 except Exception as e:
     logging.error(f"Error in getting feature columns from final_df: {e}")
     sys.exit(1)
 
 
-# Step 13: Prepare IS-normalized version (already done earlier as `df`)
+# Step 12: Prepare IS-normalized version (already done earlier as `df`)
 try:
     rsd_is = df[feature_cols].std() / df[feature_cols].mean() * 100
-    logging.info("Step 13: IS-normalization complete.")
+    logging.info("Step 12: IS-normalization complete.")
 except Exception as e:
     logging.error(f"Error in IS-normalization: {e}")
     sys.exit(1)
 
 
-# Step 14: Prepare median-normalized-only version
+# Step 13: Prepare median-normalized-only version
 try:
     median_only_df = raw_df.copy()
     median_only_norm = median_only_df.groupby("Metabolomics_sequence", group_keys=False)[feature_cols].apply(
         lambda g: g / g.median()
     )
-    logging.info("Step 14: Median normalization complete.")
+    logging.info("Step 13: Median normalization complete.")
 except Exception as e:
     logging.error(f"Error in median-normalization: {e}")
     sys.exit(1)
 
 
-# Step 15: Calculate RSDs (Relative Standard Deviations)
+# Step 14: Calculate RSDs (Relative Standard Deviations)
 def rsd(df_subset, feature_cols):
     return df_subset[feature_cols].std() / df_subset[feature_cols].mean() * 100
 
@@ -261,13 +308,13 @@ try:
     rsd_raw = rsd(raw_df, raw_feature_cols)
     rsd_median_only = rsd(median_only_norm, feature_cols)
     rsd_final = rsd(final_df, feature_cols)
-    logging.info("Step 15: RSDs calculated.")
+    logging.info("Step 14: RSDs calculated.")
 except Exception as e:
     logging.error(f"Error in RSDs calculation: {e}")
     sys.exit(1)
 
 
-# Step 16: Combine into one DataFrame
+# Step 15: Combine into one DataFrame
 rsd_df = pd.DataFrame({
     "Feature": feature_cols,
     "RSD_Raw": rsd_raw.values,
@@ -275,18 +322,18 @@ rsd_df = pd.DataFrame({
     "RSD_Median_Only": rsd_median_only.values,
     "RSD_IS_and_Median": rsd_final.values
 })
-logging.info("Step 16: All combined in one dataframe.")
+logging.info("Step 15: All combined in one dataframe.")
 
 
-# Step 17: Save RSD values per feature
+# Step 16: Save RSD values per feature
 try:
     rsd_df.to_csv(os.path.join(OUTPUT_DIR, 'RSDs_per_feature.csv'), index=False)
-    logging.info("Step 17. RSD values per feature CSV saved.")
+    logging.info("Step 16. RSD values per feature CSV saved.")
 except Exception as e:
     logging.error(f"Error in saving RSD values per feature: {e}")
 
 
-# Step 18: Summary statistics
+# Step 17: Summary statistics
 try:
     summary = rsd_df.drop(columns="Feature").agg(["min", "max", "median"]).T
     summary = summary.rename(columns={
@@ -296,12 +343,12 @@ try:
     })
     summary.index.name = "Normalization Step"
     summary.to_csv(os.path.join(OUTPUT_DIR, 'RSD_summary.csv'))
-    logging.info("Step 18. Summary statistics saved.")
+    logging.info("Step 17. Summary statistics saved.")
 except Exception as e:
     logging.error(f"Error in summary statistics: {e}")
 
 
-# Step 19: Visualization of RSDs
+# Step 18: Visualization of RSDs
 try:
     plt.figure(figsize=(14, 6))
     plt.plot(rsd_raw.values, label="Raw", marker='o', linestyle='-', alpha=0.5)
@@ -316,10 +363,14 @@ try:
     plt.tight_layout()
     # Export the plot
     plt.savefig(os.path.join(OUTPUT_DIR, "RSD_comparison_plot_20percMV.png"), dpi=300, bbox_inches='tight')
+    logging.info("Step 18. Visualization of RSDs complete.")
     # plt.show()
 except Exception as e:
     logging.error(f"Error in visualization of RSDs: {e}")
 
 
-# Step 20: Preview summary of of RSDs per normalization step
-logging.info(f"Step 20: Summary of RSDs per normalization step: {summary}")
+# Step 19: Preview summary of of RSDs per normalization step
+logging.info(f"Step 19: Summary of RSDs per normalization step: {summary}")
+
+# Step 20: Finish
+logging.info("Step 20. Data preparation completed successfully.")
