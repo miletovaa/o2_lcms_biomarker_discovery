@@ -1,6 +1,20 @@
+import os
+from dotenv import load_dotenv
+
 import pandas as pd
+import matplotlib.pyplot as plt
+
+env = load_dotenv()
+
+FILE_PATH = os.getenv("FILE_PATH")
+FILE_NAME_INPUT = os.getenv("FILE_NAME_INPUT")
+FILE_NAME_OUTPUT = os.getenv("FILE_NAME_OUTPUT")
+
+DEFAULT_ZERO_THRESHOLD = os.getenv("DEFAULT_ZERO_THRESHOLD")
+SAVE_INTERMEDIATE = os.getenv("SAVE_INTERMEDIATE") == 'True'
+
 # Step 0: Load your CSV
-df = pd.read_csv("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/rawFile_full_ANP_quant_samples_area_MS1MS2.csv")  # replace with actual path
+df = pd.read_csv(FILE_PATH + '/' + FILE_NAME_INPUT)
 
 # Step 1: Identify feature columns (everything except row ID and Metabolomics_sequence)
 non_feature_cols = ["row ID", "Metabolomics_sequence"]
@@ -11,15 +25,15 @@ feature_cols = [col for col in df.columns if col not in non_feature_cols]
 df[feature_cols] = df[feature_cols].div(df["11974"], axis=0)
 
 # Optional: Save intermediate result
-df.to_csv("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/intermediateFile_normalized.csv", index=False)
+if SAVE_INTERMEDIATE:
+    df.to_csv(FILE_PATH + "/intermediateFile_IS_normalized.csv", index=False)
 
-#Step 5: Prepare for imputation ===
+# Step 5: Prepare for imputation ===
 metadata_df = df[non_feature_cols].copy()
 features_df = df[feature_cols].copy()
 
-# Step: Remove features with more than 20% zero values
-# Define the threshold
-zero_threshold = 0.2
+# Remove features with more than 20% zero values
+zero_threshold = DEFAULT_ZERO_THRESHOLD or 0.2
 
 # Calculate fraction of zeros per feature
 zero_fractions = (features_df == 0).sum() / len(features_df)
@@ -54,9 +68,8 @@ features_imputed = features_df.groupby(df["Metabolomics_sequence"], group_keys=F
 df_imputed = pd.concat([metadata_df.reset_index(drop=True), features_imputed.reset_index(drop=True)], axis=1)
 
 # Save the imputed data
-df_imputed.to_csv("intermediateFile_normalized_imputed.csv", index=False)
+df_imputed.to_csv(FILE_PATH + "/intermediateFile_normalized_imputed.csv", index=False)
 
-import matplotlib.pyplot as plt
 # === Step 7: Visualize imputation counts ===
 # Convert imputation log to DataFrame
 imputation_df = pd.DataFrame.from_dict(imputation_log, orient='index', columns=["Imputed_Count"])
@@ -86,14 +99,14 @@ final_df = pd.concat([df_imputed[non_feature_cols].reset_index(drop=True),
                       normalized_features.reset_index(drop=True)], axis=1)
 
 # === Step 11: Save output ===
-final_df.to_csv("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/OutputFile_normalized_imputed_median_normalized.csv", index=False)
+final_df.to_csv(FILE_PATH + '/' + FILE_NAME_OUTPUT, index=False)
 
 # === Preview the result ===
 #final_df.head()
 
 
 # Step 1: Reload raw data
-raw_df = pd.read_csv("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/rawFile_full_ANP_quant_samples_area_MS1MS2.csv")  # ⬅️ Replace with your actual raw data file
+raw_df = pd.read_csv(FILE_PATH + '/' + FILE_NAME_INPUT)
 
 # Define metadata columns
 non_feature_cols = ["row ID", "Metabolomics_sequence"]
@@ -162,17 +175,13 @@ plt.legend()
 plt.grid(True)
 plt.tight_layout()
 # Export the plot
-plt.savefig("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/RSD_comparison_plot_20percMV.png", dpi=300, bbox_inches='tight')
-
+plt.savefig(FILE_PATH + "/RSD_comparison_plot_20percMV.png", dpi=300, bbox_inches='tight')
 plt.show()
-
-
 
 # Step 10: Display summary
 print("🔍 Summary of RSDs per normalization step:")
 print(summary)
 
-import pandas as pd
 
 # Step 1: Combine RSDs into one DataFrame
 rsd_df = pd.DataFrame({
@@ -184,7 +193,7 @@ rsd_df = pd.DataFrame({
 })
 
 # Step 2: Save to CSV
-rsd_df.to_csv("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/RSDs_per_feature.csv", index=False)
+rsd_df.to_csv(FILE_PATH + "/RSDs_per_feature.csv", index=False)
 
 # Step 3: Summary stats
 summary = rsd_df.drop(columns="Feature").agg(["min", "max", "median"]).T
@@ -196,7 +205,7 @@ summary = summary.rename(columns={
 summary.index.name = "Normalization Step"
 
 # Step 4: Save summary to CSV
-summary.to_csv("C:/Users/492051/OneDrive - MUNI/Dokumenty/Python Scripts/Data preparation/RSD_summary.csv")
+summary.to_csv(FILE_PATH + "/RSD_summary.csv")
 
 # Optional: Display summary
 print("🔍 Summary of RSDs per normalization step:")
