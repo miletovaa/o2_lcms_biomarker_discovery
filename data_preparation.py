@@ -19,7 +19,7 @@ FILE_NAME_INPUT = os.getenv("FILE_NAME_INPUT")
 FILE_PATH_OUTPUT = os.getenv("FILE_PATH_OUTPUT")
 FILE_NAME_OUTPUT = os.getenv("FILE_NAME_OUTPUT")
 
-IS_COL = os.getenv("IS_COL", 11974)
+IS_COL = os.getenv("IS_COL", "11974")
 DEFAULT_ZERO_THRESHOLD = float(os.getenv("DEFAULT_ZERO_THRESHOLD", 0.2))
 SAVE_INTERMEDIATE = get_bool_env("SAVE_INTERMEDIATE", True)
 
@@ -33,12 +33,13 @@ try:
     OUTPUT_DIR = os.path.join(FILE_PATH_OUTPUT, f"output_{stamp}")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 except Exception as e:
+    print(f"Failed to create output directory: {e}")
     sys.exit(1)
 
 
 # Step 0.3: Setting up logging
 if LOGGING_ENABLED:
-    logging_path = OUTPUT_DIR + '/logs'
+    logging_path = os.path.join(OUTPUT_DIR, 'logs')
     os.makedirs(logging_path, exist_ok=True)
     log_handlers = [logging.StreamHandler()]
     log_file_path = os.path.join(logging_path, 'data_preparation.log')
@@ -76,7 +77,7 @@ try:
     if IS_COL not in df.columns:
         logging.error(f"Internal standard column '{IS_COL}' not found in input.")
         raise SystemExit(1)
-    logging.info(f"Internal standard column defined: {df[IS_COL]}.")
+    logging.info(f"Internal standard column '{IS_COL}' found with {df[IS_COL].notna().sum()} non-missing values.")
     
     # Coerce everything to numeric
     # And voiding zero-division by substituting zeros with NaN
@@ -93,7 +94,7 @@ except Exception as e:
 # Optional. Step 2.1: Save intermediate IS-normalized result CSV
 if SAVE_INTERMEDIATE:
     file_name_intermediate_file_is_normalized = "intermediateFile_IS_normalized.csv"
-    df.to_csv(OUTPUT_DIR + "/" + file_name_intermediate_file_is_normalized, index=False)
+    df.to_csv(os.path.join(OUTPUT_DIR, file_name_intermediate_file_is_normalized), index=False)
     logging.info(f"Step 2.1. Intermediate result file ({file_name_intermediate_file_is_normalized}) is saved.")
 
 
@@ -107,7 +108,7 @@ logging.info(f"Step 3. Copying values from the dataframe complete.")
 # Step 4: Removing features with more than 20% zero values
 # Keep only features where ≤ 20% of values are zero
 try:
-    zero_threshold = DEFAULT_ZERO_THRESHOLD or 0.2
+    zero_threshold = DEFAULT_ZERO_THRESHOLD if DEFAULT_ZERO_THRESHOLD is not None else 0.2
     zero_fractions = (features_df.eq(0) | features_df.isna()).sum() / len(features_df)
     features_df = features_df.loc[:, zero_fractions <= zero_threshold]
     feature_cols = features_df.columns.tolist()
@@ -148,7 +149,7 @@ except Exception as e:
 # Optional. Step 5.1: Save intermediate the imputed data
 if SAVE_INTERMEDIATE:
     file_name_intermediate_file_is_imputed = "intermediateFile_normalized_imputed.csv"
-    df_imputed.to_csv(OUTPUT_DIR + "/" + file_name_intermediate_file_is_imputed, index=False)
+    df_imputed.to_csv(os.path.join(OUTPUT_DIR, file_name_intermediate_file_is_imputed), index=False)
     logging.info(f"Step 5.1. Intermediate result file ({file_name_intermediate_file_is_imputed}) is saved.")
 
 
@@ -165,7 +166,7 @@ try:
     plt.ylabel("Number of Imputed Values")
     plt.title("Imputed 0s and NaNs per Feature (LOD/2 Imputation)")
     plt.tight_layout()
-    plt.savefig(OUTPUT_DIR + "/imputed_counts_per_feature.png", dpi=300)
+    plt.savefig(os.path.join(OUTPUT_DIR, 'imputed_counts_per_feature.png'), dpi=300)
     # plt.show()
 
     logging.info("Step 6. Visualization of imputation counts complete.")
@@ -200,7 +201,7 @@ except Exception as e:
 
 # Step 9: Save output
 try:
-    final_df.to_csv(OUTPUT_DIR + '/' + FILE_NAME_OUTPUT, index=False)
+    final_df.to_csv(os.path.join(OUTPUT_DIR, FILE_NAME_OUTPUT), index=False)
     logging.info(f"Step 9. Output is saved successfully.")
 except Exception as e:
     logging.error(f"Error in saving output: {e}")
@@ -279,7 +280,7 @@ logging.info("Step 16: All combined in one dataframe.")
 
 # Step 17: Save RSD values per feature
 try:
-    rsd_df.to_csv(OUTPUT_DIR + "/RSDs_per_feature.csv", index=False)
+    rsd_df.to_csv(os.path.join(OUTPUT_DIR, 'RSDs_per_feature.csv'), index=False)
     logging.info("Step 17. RSD values per feature CSV saved.")
 except Exception as e:
     logging.error(f"Error in saving RSD values per feature: {e}")
@@ -294,7 +295,7 @@ try:
         "median": "Median RSD (%)"
     })
     summary.index.name = "Normalization Step"
-    summary.to_csv(OUTPUT_DIR + "/RSD_summary.csv")
+    summary.to_csv(os.path.join(OUTPUT_DIR, 'RSD_summary.csv'))
     logging.info("Step 18. Summary statistics saved.")
 except Exception as e:
     logging.error(f"Error in summary statistics: {e}")
@@ -314,7 +315,7 @@ try:
     plt.grid(True)
     plt.tight_layout()
     # Export the plot
-    plt.savefig(OUTPUT_DIR + "/RSD_comparison_plot_20percMV.png", dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(OUTPUT_DIR, "RSD_comparison_plot_20percMV.png"), dpi=300, bbox_inches='tight')
     # plt.show()
 except Exception as e:
     logging.error(f"Error in visualization of RSDs: {e}")
