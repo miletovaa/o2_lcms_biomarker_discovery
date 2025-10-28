@@ -7,6 +7,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 # Step 0.1: Loading environment variables from .env file
@@ -18,6 +20,7 @@ FILE_PATH_INPUT = os.getenv("FILE_PATH_INPUT")
 FILE_NAME_INPUT = os.getenv("FILE_NAME_INPUT")
 FILE_PATH_OUTPUT = os.getenv("FILE_PATH_OUTPUT")
 FILE_NAME_OUTPUT = os.getenv("FILE_NAME_OUTPUT")
+FILE_NAME_BATCH_INFO = os.getenv("FILE_NAME_BATCH_INFO")
 
 SAMPLE_PREFIX = os.getenv("SAMPLE_PREFIX", "BIO")
 FEATURE_ID_COLNAME = os.getenv("FEATURE_ID_COLNAME", "row ID")
@@ -89,16 +92,24 @@ try:
         )
 
         # Ensure required metadata columns exist for downstream steps
-        if "Metabolomics_sequence" not in t.columns:
-            t["Metabolomics_sequence"] = "1a"
-        if "batch" not in t.columns:
-            t["batch"] = "1a"
+        if not {"Metabolomics_sequence", "batch"}.issubset(t.columns):
+            df_batches = pd.read_csv(os.path.join(FILE_PATH_INPUT, FILE_NAME_BATCH_INFO))
+            t["row ID"] = t["row ID"].str.split(".").str[0]
+            mapping = df_batches.set_index("row ID")["Metabolomics_sequence"].to_dict()
+
+            t["Metabolomics_sequence"] = t["row ID"].map(mapping)
+            t["batch"] = t["row ID"].map(mapping)
+
+            missing_batches = t.loc[t["batch"].isna(), "row ID"]
+            logging.warning(f"{len(missing_batches)} rows missing batch info: {', '.join(missing_batches)}")
+
+            t = t.dropna(subset=["batch"])
 
         # Reorder metadata first, keep all feature columns (the transposed ids)
         meta_first = ["row ID", "Metabolomics_sequence", "batch"]
         remaining = [c for c in t.columns if c not in meta_first]
         df = t[meta_first + remaining]
-                # Canonicalize feature column names to strings (avoid int/float vs str mismatches)
+
         rename_map = {c: str(c) for c in remaining}
         df = df.rename(columns=rename_map)
         logging.info(f"After transpose, first 5 feature columns: {list(rename_map.values())[:5]}")
@@ -349,22 +360,167 @@ except Exception as e:
 
 
 # Step 18: Visualization of RSDs
+def save_fig(fig, fig_name):
+    fig.write_html(os.path.join(OUTPUT_DIR, fig_name + ".html"))
+    fig.write_image(os.path.join(OUTPUT_DIR, fig_name + ".png"), scale=2, width=800, height=600)
 try:
-    plt.figure(figsize=(14, 6))
-    plt.plot(rsd_raw.values, label="Raw", marker='o', linestyle='-', alpha=0.5)
-    plt.plot(rsd_is.values, label="IS Normalized", marker='x', linestyle='-', alpha=0.7)
-    plt.plot(rsd_final.values, label="IS + Median Normalized", marker='s', linestyle='-', alpha=0.9)
-    plt.plot(rsd_median_only.values, label="Median Normalized (no IS)", marker='d', linestyle='-', alpha=0.7)
-    plt.xlabel("Feature Index")
-    plt.ylabel("RSD (%)")
-    plt.title("RSD per Feature: Raw vs. Normalizations")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    # Export the plot
-    plt.savefig(os.path.join(OUTPUT_DIR, "RSD_comparison_plot_20percMV.png"), dpi=300, bbox_inches='tight')
+    # Plot RSDs comparison (initial plot)
+    fig1 = go.Figure()
+    fig1.add_trace(go.Scatter(
+        y=rsd_raw.values,
+        mode='lines+markers',
+        name='Raw',
+        marker=dict(symbol='circle', opacity=0.5)
+    ))
+    fig1.add_trace(go.Scatter(
+        y=rsd_is.values,
+        mode='lines+markers',
+        name='IS Normalized',
+        marker=dict(symbol='x', opacity=0.7)
+    ))
+    fig1.add_trace(go.Scatter(
+        y=rsd_final.values,
+        mode='lines+markers',
+        name='IS + Median Normalized',
+        marker=dict(symbol='square', opacity=0.9)
+    ))
+    fig1.add_trace(go.Scatter(
+        y=rsd_median_only.values,
+        mode='lines+markers',
+        name='Median Normalized (no IS)',
+        marker=dict(symbol='diamond', opacity=0.7)
+    ))
+    fig1.update_layout(
+        title="RSD per Feature: Raw vs. Normalizations",
+        xaxis_title="Feature Index",
+        yaxis_title="RSD (%)",
+        template="plotly_white",
+        legend=dict(x=0.01, y=0.99),
+        width=900,
+        height=600
+    )
+    save_fig(fig1, "RSD_comparison_plot_20percMV")
+
+    # Plot RSDs comparison on separate grids
+    fig2 = make_subplots(
+        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.05,
+        subplot_titles=[
+            "Raw",
+            "IS Normalized",
+            "Median Normalized",
+            "IS + Median Normalized"
+        ]
+    )
+    fig2.add_trace(go.Scatter(
+        y=rsd_raw.values,
+        mode='lines+markers',
+        name='Raw',
+        marker=dict(symbol='circle', opacity=0.5)
+    ), row=1, col=1)
+    fig2.add_trace(go.Scatter(
+        y=rsd_is.values,
+        mode='lines+markers',
+        name='IS Normalized',
+        marker=dict(symbol='x', opacity=0.7)
+    ), row=2, col=1)
+    fig2.add_trace(go.Scatter(
+        y=rsd_median_only.values,
+        mode='lines+markers',
+        name='Median Normalized (no IS)',
+        marker=dict(symbol='diamond', opacity=0.7)
+    ), row=3, col=1)
+    fig2.add_trace(go.Scatter(
+        y=rsd_final.values,
+        mode='lines+markers',
+        name='IS + Median Normalized',
+        marker=dict(symbol='square', opacity=0.9)
+    ), row=4, col=1)
+    fig2.update_layout(
+        title="RSD per Feature comparison",
+        width=700,
+        height=1500
+    )
+    save_fig(fig2, "RSD_comparison_per_norm_20percMV")
+
+    # Scatter-plot of RSDs comparison (separate grids)
+    fig3 = make_subplots(rows=1, cols=3, shared_yaxes=True, horizontal_spacing=0.05,
+                         subplot_titles=[
+                            "IS Normalized vs Raw",
+                            "Median Normalized vs Raw",
+                            "IS + Median Normalized vs Raw"
+                        ])
+    comparisons = [
+        (rsd_is, "IS Normalized"),
+        (rsd_median_only, "Median Normalized (no IS)"),
+        (rsd_final, "IS + Median Normalized")
+    ]
+    for i, (data, label) in enumerate(comparisons, start=1):
+        max_val = max(rsd_raw.max(), data.max())
+        fig3.add_trace(
+            go.Scatter(
+                x=rsd_raw,
+                y=data,
+                mode='markers',
+                marker=dict(opacity=0.5, size=6),
+                name=label
+            ),
+            row=1, col=i
+        )
+        fig3.update_xaxes(title_text="Raw RSD (%)", range=[0, max_val], row=1, col=i)
+        fig3.update_yaxes(title_text="Normalized RSD (%)", range=[0, max_val], row=1, col=i)
+        fig3.add_trace(
+            go.Scatter(
+                x=[0, max_val],
+                y=[0, max_val],
+                mode="lines",
+                line=dict(color="gray", dash="dash", width=1),
+                showlegend=False
+            ),
+            row=1, col=i
+        )
+    fig3.update_layout(
+        title="Feature-wise RSD Comparison After Normalizations",
+        template="plotly_white",
+        width=1600,
+        height=450,
+        showlegend=False
+    )
+    save_fig(fig3, "RSD_scatter_comparison_20percMV")
+
+    # Scatter-plot of RSDs comparison (single grid)
+    fig4 = go.Figure()
+    colors = ["#636EFA", "#EF553B", "#00CC96"]
+    labels = ["IS Normalized", "Median Normalized (no IS)", "IS + Median Normalized"]
+    datasets = [rsd_is, rsd_median_only, rsd_final]
+    max_val = max(rsd_raw.max(), max(d.max() for d in datasets))
+    for data, color, label in zip(datasets, colors, labels):
+        fig4.add_trace(go.Scatter(
+            x=rsd_raw,
+            y=data,
+            mode='markers',
+            marker=dict(color=color, opacity=0.5, size=6),
+            name=label
+        ))
+    fig4.add_trace(go.Scatter(
+        x=[0, max_val],
+        y=[0, max_val],
+        mode='lines',
+        line=dict(color='gray', dash='dash', width=1),
+        name='y=x'
+    ))
+    fig4.update_layout(
+        title="All Normalizations vs Raw (Feature-wise RSD)",
+        xaxis_title="Raw RSD (%)",
+        yaxis_title="Normalized RSD (%)",
+        template="plotly_white",
+        width=600,
+        height=600,
+        legend=dict(x=0.02, y=0.98)
+    )
+    save_fig(fig4, "RSD_scatter_all_in_one_20percMV")
+
     logging.info("Step 18. Visualization of RSDs complete.")
-    # plt.show()
+    # fig1.show(); fig2.show(); fig3.show(); fig4.show();
 except Exception as e:
     logging.error(f"Error in visualization of RSDs: {e}")
 
@@ -372,5 +528,7 @@ except Exception as e:
 # Step 19: Preview summary of of RSDs per normalization step
 logging.info(f"Step 19: Summary of RSDs per normalization step: {summary}")
 
+
 # Step 20: Finish
 logging.info("Step 20. Data preparation completed successfully.")
+
