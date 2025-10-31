@@ -1,0 +1,29 @@
+parameters:
+  id: 000
+  description: "Default experiment."
+
+data:
+  # Input file name containing raw input data
+  file_name_input: "input.csv"
+  # Input file name containing batch information (if applicable)
+  file_name_batch_info: null
+  # Column name for feature identifiers in the input file
+  feature_id_colname: "row ID"
+  # Prefix for sample names in the input file (e.g., "BIO" for samples named like "BIO-PD01-RP")
+  sample_prefix: "BIO"
+
+preprocessing:
+  # Internal Standard Column (Default: 11974)
+  is_col: "11974"
+  # Threshold for zero values (Default: 20%)
+  zero_threshold: 0.2
+
+run:
+  # Whether to save intermediate CSV checkpoints (Default: false)
+  save_intermediate: false
+
+logging:
+  # To enable logging. Options: [true, false]. (Default: false)
+  enabled: false
+  # Options: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]. (Default: "INFO")
+  level: "INFO"

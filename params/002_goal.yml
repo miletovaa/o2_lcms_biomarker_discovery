@@ -1,0 +1,29 @@
+parameters:
+  id: 002
+  description: "Settings matching the goal input RP file configuration."
+
+data:
+  # Input file name containing raw input data
+  file_name_input: "RP_quant_samples_area.csv"
+  # Input file name containing batch information (if applicable)
+  file_name_batch_info: "intermediateFile_normalized_RP.csv"
+  # Column name for feature identifiers in the input file
+  feature_id_colname: "row ID"
+  # Prefix for sample names in the input file (e.g., "BIO" for samples named like "BIO-PD01-RP")
+  sample_prefix: "BIO"
+
+preprocessing:
+  # Internal Standard Column (Default: 11974)
+  is_col: "22104"
+  # Threshold for zero values (Default: 20%)
+  zero_threshold: 0.2
+
+run:
+  # Whether to save intermediate CSV checkpoints (Default: false)
+  save_intermediate: true
+
+logging:
+  # To enable logging. Options: [true, false]. (Default: false)
+  enabled: true
+  # Options: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]. (Default: "INFO")
+  level: "INFO"

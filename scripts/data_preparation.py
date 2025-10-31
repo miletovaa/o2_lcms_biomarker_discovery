@@ -1,6 +1,5 @@
 import sys
 import os
-from dotenv import load_dotenv
 import logging
 
 import pandas as pd
@@ -10,33 +9,20 @@ from datetime import datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from utils.config import cfg
+
 
 # Step 0.1: Loading environment variables from .env file
-env = load_dotenv()
-def get_bool_env(var_name, default=False):
-    return os.getenv(var_name, str(default)).lower() in ("1", "true", "yes", "on")
-
-FILE_PATH_INPUT = os.getenv("FILE_PATH_INPUT")
-FILE_NAME_INPUT = os.getenv("FILE_NAME_INPUT")
-FILE_PATH_OUTPUT = os.getenv("FILE_PATH_OUTPUT")
-FILE_NAME_OUTPUT = os.getenv("FILE_NAME_OUTPUT")
-FILE_NAME_BATCH_INFO = os.getenv("FILE_NAME_BATCH_INFO")
-
-SAMPLE_PREFIX = os.getenv("SAMPLE_PREFIX", "BIO")
-FEATURE_ID_COLNAME = os.getenv("FEATURE_ID_COLNAME", "row ID")
-
-IS_COL = os.getenv("IS_COL", "11974")
-DEFAULT_ZERO_THRESHOLD = float(os.getenv("DEFAULT_ZERO_THRESHOLD", 0.2))
-SAVE_INTERMEDIATE = get_bool_env("SAVE_INTERMEDIATE", True)
-
-LOGGING_ENABLED = get_bool_env("LOGGING_ENABLED", False)
-LOGGING_LEVEL = os.getenv("LOGGING_LEVEL", "INFO")
-
+FILE_PATH_INPUT = cfg.get("FILE_PATH_INPUT", "./data")
+FILE_PATH_OUTPUT = cfg.get("FILE_PATH_OUTPUT", "./results")
+PARAMS_ID = cfg.get("PARAMS_ID", "000")
+IS_COL = str(cfg.preprocessing.is_col)
+print(cfg)
 
 # Step 0.2: Generating output directory
 try:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # avoid ':' for Windows
-    OUTPUT_DIR = os.path.join(FILE_PATH_OUTPUT, f"output_{stamp}")
+    OUTPUT_DIR = os.path.join(FILE_PATH_OUTPUT, f"output_{PARAMS_ID}_{stamp}")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 except Exception as e:
     print(f"Failed to create output directory: {e}")
@@ -44,7 +30,7 @@ except Exception as e:
 
 
 # Step 0.3: Setting up logging
-if LOGGING_ENABLED:
+if cfg.logging.enabled:
     logging_path = os.path.join(OUTPUT_DIR, 'logs')
     os.makedirs(logging_path, exist_ok=True)
     log_handlers = [logging.StreamHandler()]
@@ -61,8 +47,8 @@ logging.info(f"Logging is set up successfully. Starting data preparation.")
 
 # Step 0.4: Load your CSV
 try:
-    df = pd.read_csv(FILE_PATH_INPUT + '/' + FILE_NAME_INPUT)
-    logging.info(f"Input CSV file ({FILE_NAME_INPUT}) loaded successfully.")
+    df = pd.read_csv(FILE_PATH_INPUT + '/' + cfg.data.file_name_input)
+    logging.info(f"Input CSV file ({cfg.data.file_name_input}) loaded successfully.")
 except Exception as e:
     logging.error(f"Error loading CSV file: {e}")
     sys.exit(1)
@@ -74,12 +60,15 @@ except Exception as e:
 #   - Else transpose.
 #   - If any column starts with SAMPLE_PREFIX (e.g., 'BIO-') => assume RP-style and TRANSPOSE.
 try:
-    sample_cols = [c for c in df.columns if str(c).startswith(SAMPLE_PREFIX)]
+    sample_cols = [c for c in df.columns if str(c).startswith(cfg.data.sample_prefix)]
     meta_cols   = [c for c in df.columns if c not in sample_cols]
-
     need_transpose = (IS_COL not in df.columns) or (len(sample_cols) > 0)
+
+    print(IS_COL not in meta_cols, len(sample_cols) > 0)
+    # print(IS_COL, df.columns)
+
     if need_transpose:
-        id_col = FEATURE_ID_COLNAME if FEATURE_ID_COLNAME in meta_cols else (meta_cols[0] if meta_cols else df.columns[0])
+        id_col = cfg.data.feature_id_colname if cfg.data.feature_id_colname in meta_cols else (meta_cols[0] if meta_cols else df.columns[0])
         logging.info(f"Transpose: using feature id column '{id_col}'. meta_cols={len(meta_cols)}; sample_cols={len(sample_cols)}")
         
         # Build a samples x features table from: [id_col] + sample columns
@@ -93,7 +82,7 @@ try:
 
         # Ensure required metadata columns exist for downstream steps
         if not {"Metabolomics_sequence", "batch"}.issubset(t.columns):
-            df_batches = pd.read_csv(os.path.join(FILE_PATH_INPUT, FILE_NAME_BATCH_INFO))
+            df_batches = pd.read_csv(os.path.join(FILE_PATH_INPUT, cfg.data.file_name_batch_info))
             t["row ID"] = t["row ID"].str.split(".").str[0]
             mapping = df_batches.set_index("row ID")["Metabolomics_sequence"].to_dict()
 
@@ -144,7 +133,7 @@ try:
         logging.error(f"Internal standard column '{IS_COL}' not found in input.")
         raise SystemExit(1)
     logging.info(f"Internal standard column '{IS_COL}' found with {df[IS_COL].notna().sum()} non-missing values.")
-    
+
     # Coerce everything to numeric
     # And voiding zero-division by substituting zeros with NaN
     IS_vector = pd.to_numeric(df[IS_COL], errors="coerce").replace(0, np.nan)
@@ -158,7 +147,7 @@ except Exception as e:
 
 
 # Optional. Step 2.1: Save intermediate IS-normalized result CSV
-if SAVE_INTERMEDIATE:
+if cfg.run.save_intermediate:
     file_name_intermediate_file_is_normalized = "intermediateFile_IS_normalized.csv"
     df.to_csv(os.path.join(OUTPUT_DIR, file_name_intermediate_file_is_normalized), index=False)
     logging.info(f"Step 2.1. Intermediate result file ({file_name_intermediate_file_is_normalized}) is saved.")
@@ -174,7 +163,7 @@ logging.info(f"Step 3. Copying values from the dataframe complete.")
 # Step 4: Removing features with more than 20% zero values
 # Keep only features where ≤ 20% of values are zero
 try:
-    zero_threshold = DEFAULT_ZERO_THRESHOLD if DEFAULT_ZERO_THRESHOLD is not None else 0.2
+    zero_threshold = cfg.preprocessing.zero_threshold if cfg.preprocessing.zero_threshold is not None else 0.2
     zero_fractions = (features_df.eq(0) | features_df.isna()).sum() / len(features_df)
     features_df = features_df.loc[:, zero_fractions <= zero_threshold]
     feature_cols = features_df.columns.tolist()
@@ -213,7 +202,7 @@ except Exception as e:
 
 
 # Optional. Step 5.1: Save intermediate the imputed data
-if SAVE_INTERMEDIATE:
+if cfg.run.save_intermediate:
     file_name_intermediate_file_is_imputed = "intermediateFile_normalized_imputed.csv"
     df_imputed.to_csv(os.path.join(OUTPUT_DIR, file_name_intermediate_file_is_imputed), index=False)
     logging.info(f"Step 5.1. Intermediate result file ({file_name_intermediate_file_is_imputed}) is saved.")
@@ -267,7 +256,7 @@ except Exception as e:
 
 # Step 9: Save output
 try:
-    final_df.to_csv(os.path.join(OUTPUT_DIR, FILE_NAME_OUTPUT), index=False)
+    final_df.to_csv(os.path.join(OUTPUT_DIR, "OutputFile_normalized_imputed_median_normalized.csv"), index=False)
     logging.info(f"Step 9. Output is saved successfully.")
 except Exception as e:
     logging.error(f"Error in saving output: {e}")
