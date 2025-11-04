@@ -17,7 +17,7 @@ FILE_PATH_INPUT = cfg.get("FILE_PATH_INPUT", "./data")
 FILE_PATH_OUTPUT = cfg.get("FILE_PATH_OUTPUT", "./results")
 PARAMS_ID = cfg.get("PARAMS_ID", "000")
 IS_COL = str(cfg.preprocessing.is_col)
-print(cfg)
+
 
 # Step 0.2: Generating output directory
 try:
