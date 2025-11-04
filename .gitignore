@@ -1,5 +1,4 @@
 .env
-data
 .DS_Store
 output_*
 __pycache__
