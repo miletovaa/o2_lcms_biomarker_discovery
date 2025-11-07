@@ -42,7 +42,7 @@ if cfg.logging.enabled:
         format='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%d-%m-%Y %H:%M:%S'
     )
-logging.info(f"Logging is set up successfully. Starting data preparation.")
+    logging.info(f"Logging is set up successfully. Starting data preparation.")
 
 
 # Step 0.4: Load your CSV
