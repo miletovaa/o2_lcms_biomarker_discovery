@@ -1,28 +1,73 @@
-name: base
+name: env_data_preparation
 channels:
   - conda-forge
   - bioconda
   - https://repo.anaconda.com/pkgs/main
   - https://repo.anaconda.com/pkgs/r
 dependencies:
-  - _anaconda_depends
   - python=3.12
-  - setuptools
-  - pip
+  - plotly
+  - matplotlib
+  - python-dotenv
+  - numpy
+  - pandas
+  - pyyaml
+  - python-kaleido
+  - ca-certificates
   - wheel
-  - anaconda-anon-usage
-  - anaconda-catalogs
-  - anaconda-client
-  - anaconda-project
-  - anaconda-navigator
-  - conda[version='>=23.7']
-  - conda-build
-  - conda-content-trust
-  - conda-libmamba-solver
-  - conda-pack
-  - conda-package-handling
-  - conda-package-streaming
-  - conda-token
-  - python.app
-  - tensorflow
-prefix: /opt/anaconda3
+  - pip
+  - jupyter_client
+  - openssl
+  - debugpy
+  - python-dateutil
+  - typing_extensions
+  - libcxx
+  - readline
+  - traitlets
+  - tornado
+  - prompt-toolkit
+  - appnope
+  - libedit
+  - pyzmq
+  - parso
+  - libsqlite
+  - asttokens
+  - pure_eval
+  - six
+  - comm
+  - jupyter_core
+  - ipython
+  - ncurses
+  - python_abi
+  - nest-asyncio
+  - packaging
+  - setuptools
+  - importlib-metadata
+  - libexpat
+  - tzdata
+  - bzip2
+  - libsodium
+  - libzlib
+  - decorator
+  - platformdirs
+  - zeromq
+  - ipython_pygments_lexers
+  - pexpect
+  - stack_data
+  - zipp
+  - jedi
+  - ptyprocess
+  - matplotlib-inline
+  - wcwidth
+  - liblzma
+  - psutil
+  - libffi
+  - tk
+  - executing
+  - pygments
+  - krb5
+  - ipykernel
+  - openpyxl
+  - et_xmlfile
+  - scipy
+prefix: /opt/anaconda3/envs/env_data_preparation
