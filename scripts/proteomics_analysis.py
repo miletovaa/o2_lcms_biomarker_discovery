@@ -6,7 +6,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from scipy.stats import probplot, shapiro
+from scipy.stats import probplot, shapiro, f_oneway, kruskal
 
 from utils.config import cfg
 
@@ -94,21 +94,21 @@ try:
     loq_fraction = df[value_cols].isna().mean(axis=1)
 
     df_filtered = df.loc[loq_fraction <= zero_threshold].reset_index(drop=True)
-    logging.info("Step 2: Filtered proteins that have more than %d%% of '<LOQ': kept %d of %d", zero_threshold * 100, len(df_filtered), len(df))
+    logging.info("Step 2: Filtered peptides that have more than %d%% of '<LOQ': kept %d of %d", zero_threshold * 100, len(df_filtered), len(df))
     df = df_filtered.copy()
 except Exception as e:
     logging.error(f"Error during zero thresholding: {e}")
     sys.exit(1)
 
 
-# Step 3: Imputing remaining '<LOQ' values with LOQ/2 for each protein
+# Step 3: Imputing remaining '<LOQ' values with LOQ/2 for each peptide
 try:
     for col in value_cols:
         min_detected = df[col].min(skipna=True)
         impute_value = min_detected / 2 if pd.notna(min_detected) else 0
         df.fillna({col: impute_value}, inplace=True)
 
-    logging.info("Step 3: Imputed remaining '<LOQ' values with LOQ/2 for each protein.")
+    logging.info("Step 3: Imputed remaining '<LOQ' values with LOQ/2 for each peptide.")
 except Exception as e:
     logging.error(f"Error during imputation of '<LOQ' values: {e}")
     sys.exit(1)
@@ -125,40 +125,143 @@ except Exception as e:
     sys.exit(1)
 
 
-# Step 4: Shapiro-Wilk test for normality on each protein across samples
-try:
+# Step 4: Shapiro-Wilk test for normality on each peptide across samples
+def do_shapiro(df, groups):
     results = []
-    for idx, row in df.iterrows():
-        protein_name = row["Protein"] if "Protein" in df.columns else f"Protein_{idx}"
-        peptide_name = row["Peptide"] if "Peptide" in df.columns else f"Peptide_{idx}"
-
+    for _, row in df.iterrows():
         for group, cols in groups.items():
             values = row[cols].astype(float).values
             if len(values) < 3:
                 continue
 
             stat, pval = shapiro(values)
-            (osm, osr), (slope, intercept, r) = probplot(values)
+            _, (slope, intercept, r) = probplot(values)
             
             results.append({
-                "protein": protein_name,
-                "peptide": peptide_name,
+                "peptide": row["Peptide"],
+                "protein": row["Protein"],
                 "group": group,
+
+                "is_normal_shapiro": pval > 0.05,
+                "is_normal_qq": r >= 0.990,
+
                 "shapiro_stat": stat,
                 "shapiro_pval": pval,
+
                 "qq_slope": slope,
                 "qq_intercept": intercept,
                 "qq_rvalue": r
             })
+    return results
 
-    normality_df = pd.DataFrame(results)
-    normality_df["is_normal"] = normality_df["shapiro_pval"] > 0.05
-    normality_df.sort_values(by=["group", "protein"], inplace=True)
+try:
+    # * Applied Shapiro-Wilk test on INITIAL peptide data (before log transformation)
+    # ? normality_df: peptide, protein, group, is_normal_shapiro, is_normal_qq, 
+    # ?               shapiro_stat, shapiro_pval, qq_slope, qq_intercept, qq_rvalue
+    normality_df = pd.DataFrame(do_shapiro(df, groups))
+    normality_df.sort_values(by=["peptide"], inplace=True) # by=["group", "peptide"]
     normality_df.to_csv(os.path.join(OUTPUT_DIR, "proteomics_normality_by_group.csv"), index=False)
 
-    logging.info("Step 4: Completed Shapiro-Wilk tests for each protein within each group.")
-    logging.info(normality_df.head(15))
+    # * Count percentage of non-normal peptides
+    # ? normal: array of peptides and their groups that have is_normal_shapiro == True
+    normal = normality_df.loc[normality_df["is_normal_shapiro"], ["peptide", "group"]]
+    logging.info("Number of normal group-peptides  (before log transformation): %d out of %d (%.2f%%)", normal.shape[0], normality_df.shape[0], normal.shape[0] / normality_df.shape[0] * 100)
+
+    # * Peptides normal in all 3 groups (by Shapiro)
+    normal_all_3 = (
+        normality_df.groupby("peptide")
+        .agg(n_groups=("group", "nunique"), all_normal=("is_normal_shapiro", "all"))
+        .query("n_groups == 3 and all_normal")
+        .index.tolist()
+    )
+    logging.info("Peptides normal in all 3 groups (Shapiro): %d", len(normal_all_3))
+
+
+    # * Apply log10 transformation and re-test normality
+    df_log = df.copy()
+    df_log[value_cols] = np.log10(
+        df[value_cols].astype(float).clip(lower=1e-12)
+    )
+    normality_df_log = pd.DataFrame(do_shapiro(df_log, groups))
+    normality_df_log.sort_values(by=["peptide", "group"], inplace=True)
+    normality_df_log.to_csv(os.path.join(OUTPUT_DIR, "proteomics_log_normality_by_group.csv"), index=False)
+
+    # * Count percentage of non-normal peptides after log transformation
+    normal_log = normality_df_log.loc[normality_df_log["is_normal_shapiro"], ["peptide", "group"]]
+    logging.info("Number of normal group-peptides (after log transformation): %d out of %d (%.2f%%)", normal_log.shape[0], normality_df_log.shape[0], normal_log.shape[0] / normality_df_log.shape[0] * 100)
+
+    # * Peptides normal in all 3 groups (by Shapiro)
+    normal_all_3 = (
+        normality_df_log.groupby("peptide")
+        .agg(n_groups=("group", "nunique"), all_normal=("is_normal_shapiro", "all"))
+        .query("n_groups == 3 and all_normal")
+        .index.tolist()
+    )
+    logging.info("Peptides normal in all 3 groups (Shapiro): %d", len(normal_all_3))
+
+
+    logging.info("Step 4: Completed Shapiro-Wilk tests for each peptide within each group.")
 except Exception as e:
     logging.error(f"Error during Shapiro-Wilk test: {e}")
     sys.exit(1)
 
+
+# Step 5: Doing statistical tests between groups
+try:
+    # TODO: condition for choosing test based on normality results
+    # * Using Kruskal-Wallis test for all peptides (non-parametric)
+    kw_results = []
+    group_names = list(groups.keys())
+    for _, row in df.iterrows():
+        values_by_group = [row[groups[g]].astype(float).values for g in group_names]
+        stat, pval = kruskal(*values_by_group)
+        kw_results.append({
+            "peptide": row["Peptide"],
+            "protein": row["Protein"],
+            "kw_stat": stat,
+            "kw_pval": pval,
+            "is_significant": pval < 0.05,
+        })
+
+    kw_df = pd.DataFrame(kw_results)
+    kw_df.sort_values(by=["is_significant", "kw_pval", "peptide"], ascending=[False, True, True], inplace=True)
+    kw_df.to_csv(os.path.join(OUTPUT_DIR, "proteomics_kruskal_by_peptide.csv"), index=False)
+
+
+    # * Using ANOVA for peptides normal in all 3 groups
+    anova_results = []
+    for peptide in normal_all_3:
+        row = df.loc[df["Peptide"] == peptide].iloc[0]
+        values_by_group = [row[groups[g]].astype(float).values for g in group_names]
+        stat, pval = f_oneway(*values_by_group)
+        anova_results.append({
+            "peptide": row["Peptide"],
+            "protein": row["Protein"],
+            "anova_stat": stat,
+            "anova_pval": pval,
+            "is_significant": pval < 0.05,
+        })
+    anova_df = pd.DataFrame(anova_results)
+    anova_df.sort_values(by=["is_significant", "anova_pval", "peptide"], ascending=[False, True, True], inplace=True)
+    anova_df.to_csv(os.path.join(OUTPUT_DIR, "proteomics_anova_by_peptide.csv"), index=False)
+
+
+    logging.info("Step 5: Statistical tests between groups done.")    
+except Exception as e:
+    logging.error(f"Error during statistical tests: {e}")
+    sys.exit(1)
+
+
+# Step 6: Visualizations
+try:
+    # TODO: Box plots
+
+
+    # TODO: Histograms
+
+
+    # TODO: Distribution plots
+
+except Exception as e:
+    logging.error(f"Error during visualizations: {e}")
+    sys.exit(1)
