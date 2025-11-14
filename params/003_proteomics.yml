@@ -13,6 +13,7 @@ preprocessing:
 run:
   # Whether to save intermediate CSV checkpoints (Default: false)
   save_intermediate: false
+  use_correction: true
 
 logging:
   # To enable logging. Options: [true, false]. (Default: false)
