@@ -314,11 +314,11 @@ try:
     # 7.2 Box plots
     fig_box = make_subplots(
         rows=1,
-        cols=n_sig,
+        cols=len(sig_peptides_fdr),
         shared_yaxes=False,
-        subplot_titles=sig_peptides
+        subplot_titles=sig_peptides_fdr
     )
-    for col_idx, peptide in enumerate(sig_peptides, start=1):
+    for col_idx, peptide in enumerate(sig_peptides_fdr, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
         for g in group_names:
             values = row_pep[groups[g]].astype(float).values
@@ -333,7 +333,7 @@ try:
                 row=1,
                 col=col_idx
             )
-    width_box = max(400 * n_sig, 800)
+    width_box = max(400 * len(sig_peptides_fdr), 800)
     height_box = 600
     fig_box.update_layout(
         title="Significant Peptides – Box Plots per Peptide (3 groups each)",
@@ -346,11 +346,11 @@ try:
     # 7.3 Histograms: median bars
     fig_hist = make_subplots(
         rows=1,
-        cols=n_sig,
+        cols=len(sig_peptides_fdr),
         shared_yaxes=False,
-        subplot_titles=sig_peptides
+        subplot_titles=sig_peptides_fdr
     )
-    for col_idx, peptide in enumerate(sig_peptides, start=1):
+    for col_idx, peptide in enumerate(sig_peptides_fdr, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
         for g in group_names:
             values = row_pep[groups[g]].astype(float).values
@@ -373,7 +373,7 @@ try:
     fig_hist.update_layout(
         barmode="group"
     )
-    width_hist = max(400 * n_sig, 800)
+    width_hist = max(400 * len(sig_peptides_fdr), 800)
     height_hist = 600
     fig_hist.update_layout(
         title="Significant Peptides – Group Medians per Peptide (3 bars each)",
@@ -386,11 +386,11 @@ try:
     # 7.4 Distributions
     fig_dist = make_subplots(
         rows=1,
-        cols=n_sig,
+        cols=len(sig_peptides_fdr),
         shared_yaxes=False,
-        subplot_titles=sig_peptides
+        subplot_titles= sig_peptides_fdr
     )
-    for col_idx, peptide in enumerate(sig_peptides, start=1):
+    for col_idx, peptide in enumerate( sig_peptides_fdr, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
 
         all_vals = []
@@ -431,7 +431,7 @@ try:
                 row=1,
                 col=col_idx
             )
-    width_dist = max(400 * n_sig, 800)
+    width_dist = max(400 * len(sig_peptides_fdr), 800)
     height_dist = 500
     fig_dist.update_layout(
         title="Significant Peptides – Density Distributions per Peptide (3 groups each)",
