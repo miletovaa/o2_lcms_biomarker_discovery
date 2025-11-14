@@ -18,13 +18,14 @@ pd.set_option('future.no_silent_downcasting', True)
 FILE_PATH_INPUT = cfg.get("FILE_PATH_INPUT", "./data")
 FILE_PATH_OUTPUT = cfg.get("FILE_PATH_OUTPUT", "./results")
 PARAMS_ID = cfg.get("PARAMS_ID", "000")
+PROTEOMICS_PARAMS_ID = cfg.get("PROTEOMICS_PARAMS_ID", "000")
 IS_COL = str(cfg.preprocessing.is_col)
 
 
 # Step 0.2: Generating output directory
 try:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # avoid ':' for Windows
-    OUTPUT_DIR = os.path.join(FILE_PATH_OUTPUT, f"output_{PARAMS_ID}_{stamp}")
+    OUTPUT_DIR = os.path.join(FILE_PATH_OUTPUT, f"output_{PROTEOMICS_PARAMS_ID}_{stamp}")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 except Exception as e:
     print(f"Failed to create output directory: {e}")
@@ -33,11 +34,11 @@ except Exception as e:
 
 # Step 0.3: Setting up logging
 if cfg.logging.enabled:
-    # ! logging_path = os.path.join(OUTPUT_DIR, 'logs')
-    # ! os.makedirs(logging_path, exist_ok=True)
+    logging_path = os.path.join(OUTPUT_DIR, 'logs')
+    os.makedirs(logging_path, exist_ok=True)
     log_handlers = [logging.StreamHandler()]
-    # ! log_file_path = os.path.join(logging_path, 'proteomics_analysis.log')
-    # ! log_handlers.append(logging.FileHandler(log_file_path))
+    log_file_path = os.path.join(logging_path, 'proteomics_analysis.log')
+    log_handlers.append(logging.FileHandler(log_file_path))
     logging.basicConfig(
         level=logging.INFO, 
         handlers=log_handlers,

@@ -38,6 +38,7 @@ cfg = DotDict(
         "FILE_PATH_INPUT": FILE_PATH_INPUT,
         "FILE_PATH_OUTPUT": FILE_PATH_OUTPUT,
         "PARAMS_ID": PARAMS_ID,
+        "PROTEOMICS_PARAMS_ID": PROTEOMICS_PARAMS_ID,
         **yml_cfg,
         **yml_cfg_proteomics,
     }
