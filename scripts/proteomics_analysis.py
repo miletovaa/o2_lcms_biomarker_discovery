@@ -345,13 +345,16 @@ try:
                 row=1,
                 col=col_idx
             )
-    width_box = max(400 * len(sig_peptides_fdr), 800)
-    height_box = 600
+    width_box = max(350 * len(sig_peptides), 800)
+    height_box = 400
     fig_box.update_layout(
         title="Significant Peptides – Box Plots per Peptide (3 groups each)",
         width=width_box,
         height=height_box
     )
+    # Axis labels for boxplots
+    fig_box.update_xaxes(title_text="Group")
+    fig_box.update_yaxes(title_text="Peptide intensity", row=1, col=1)
     save_fig(fig_box, "significant_peptides_boxplots", width_box, height_box)
     logging.info("Step 7.2: Box plots saved.")
 
@@ -385,13 +388,16 @@ try:
     fig_hist.update_layout(
         barmode="group"
     )
-    width_hist = max(400 * len(sig_peptides_fdr), 800)
-    height_hist = 600
+    width_hist = max(300 * len(sig_peptides), 300)
+    height_hist = 350
     fig_hist.update_layout(
         title="Significant Peptides – Group Medians per Peptide (3 bars each)",
         width=width_hist,
         height=height_hist
     )
+    # Axis labels for median-bar histograms
+    fig_hist.update_xaxes(title_text="Group")
+    fig_hist.update_yaxes(title_text="Median peptide intensity", row=1, col=1)
     save_fig(fig_hist, "significant_peptides_histograms", width_hist, height_hist)
     logging.info("Step 7.3: Histograms (median bars) saved.")
 
@@ -443,13 +449,16 @@ try:
                 row=1,
                 col=col_idx
             )
-    width_dist = max(400 * len(sig_peptides_fdr), 800)
-    height_dist = 500
+    width_dist = max(400 * len(sig_peptides), 400)
+    height_dist = 350
     fig_dist.update_layout(
         title="Significant Peptides – Density Distributions per Peptide (3 groups each)",
         width=width_dist,
         height=height_dist
     )
+    # Axis labels for density plots
+    fig_dist.update_xaxes(title_text="Peptide intensity")
+    fig_dist.update_yaxes(title_text="Density", row=1, col=1)
     save_fig(fig_dist, "significant_peptides_distributions", width_dist, height_dist)
     logging.info("Step 7.4: Distribution plots saved.")
 
