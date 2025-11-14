@@ -6,7 +6,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from scipy.stats import probplot, shapiro, f_oneway, kruskal
+from plotly.subplots import make_subplots
+from scipy.stats import probplot, shapiro, f_oneway, kruskal, gaussian_kde
 
 from utils.config import cfg
 
@@ -252,16 +253,169 @@ except Exception as e:
     sys.exit(1)
 
 
-# Step 6: Visualizations
+# Step 6: Visualizations of the groups of peptides that are significant
+def save_fig(fig, fig_name, width, height):
+    output = os.path.join(OUTPUT_DIR, 'figures')
+    os.makedirs(output, exist_ok=True)
+
+    html_path = os.path.join(output, fig_name + ".html")
+    fig.write_html(html_path)
+    try:
+        fig.write_image(os.path.join(output, fig_name + ".png"),
+                        scale=2, width=width, height=height)
+    except Exception as e:
+        logging.warning("Could not save PNG for %s: %s", fig_name, e)
 try:
-    # TODO: Box plots
+    # Step 6: Visualization of significant peptides
+    # 6.1: Get distinct significant peptides from Kruskal and ANOVA
+    sig_kw = set(kw_df.loc[kw_df["is_significant"], "peptide"])
+    sig_anova = set(anova_df.loc[anova_df["is_significant"], "peptide"])
+    sig_peptides = sorted(sig_kw.union(sig_anova))
+    n_sig = len(sig_peptides)
+    logging.info("Step 6: %d unique significant peptides from Kruskal/ANOVA.", n_sig)
 
+    group_colors = {
+        "PD":  "#636EFA",   # blue
+        "RBD": "#EF553B",   # red
+        "CON": "#00CC96",   # green
+    }
 
-    # TODO: Histograms
+    if n_sig == 0:
+        logging.info("Step 6: No significant peptides found. Skipping visualizations.")
+    else:
+        group_names = list(groups.keys())
+        
+        # 6.2 Box plots
+        fig_box = make_subplots(
+            rows=1,
+            cols=n_sig,
+            shared_yaxes=False,
+            subplot_titles=sig_peptides
+        )
+        for col_idx, peptide in enumerate(sig_peptides, start=1):
+            row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
+            for g in group_names:
+                values = row_pep[groups[g]].astype(float).values
+                fig_box.add_trace(
+                    go.Box(
+                        y=values,
+                        name=g,
+                        boxpoints="outliers",
+                        showlegend=(col_idx == 1),
+                        marker_color=group_colors.get(g),
+                    ),
+                    row=1,
+                    col=col_idx
+                )
+        width_box = max(400 * n_sig, 800)
+        height_box = 600
+        fig_box.update_layout(
+            title="Significant Peptides – Box Plots per Peptide (3 groups each)",
+            width=width_box,
+            height=height_box
+        )
+        save_fig(fig_box, "significant_peptides_boxplots", width_box, height_box)
+        logging.info("Step 6.2: Box plots saved.")
 
+        # 6.3 Histograms: median bars
+        fig_hist = make_subplots(
+            rows=1,
+            cols=n_sig,
+            shared_yaxes=False,
+            subplot_titles=sig_peptides
+        )
+        for col_idx, peptide in enumerate(sig_peptides, start=1):
+            row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
+            for g in group_names:
+                values = row_pep[groups[g]].astype(float).values
+                values = values[~np.isnan(values)]
+                if len(values) == 0:
+                    median_val = np.nan
+                else:
+                    median_val = float(np.median(values))
+                fig_hist.add_trace(
+                    go.Bar(
+                        x=[g],
+                        y=[median_val],
+                        name=g,
+                        marker_color=group_colors.get(g),
+                        showlegend=(col_idx == 1)
+                    ),
+                    row=1,
+                    col=col_idx
+                )
+        fig_hist.update_layout(
+            barmode="group"
+        )
+        width_hist = max(400 * n_sig, 800)
+        height_hist = 600
+        fig_hist.update_layout(
+            title="Significant Peptides – Group Medians per Peptide (3 bars each)",
+            width=width_hist,
+            height=height_hist
+        )
+        save_fig(fig_hist, "significant_peptides_histograms", width_hist, height_hist)
+        logging.info("Step 6.3: Histograms (median bars) saved.")
 
-    # TODO: Distribution plots
+        # 6.4 Distributions
+        fig_dist = make_subplots(
+            rows=1,
+            cols=n_sig,
+            shared_yaxes=False,
+            subplot_titles=sig_peptides
+        )
+        for col_idx, peptide in enumerate(sig_peptides, start=1):
+            row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
 
+            all_vals = []
+            group_vals = {}
+            for g in group_names:
+                vals = row_pep[groups[g]].astype(float).values
+                vals = vals[~np.isnan(vals)]
+                if len(vals) == 0:
+                    continue
+                group_vals[g] = vals
+                all_vals.append(vals)
+            if not all_vals:
+                continue
+            all_vals = np.concatenate(all_vals)
+            x_min, x_max = float(all_vals.min()), float(all_vals.max())
+            if x_min == x_max:
+                x_min -= 1e-6
+                x_max += 1e-6
+            xs = np.linspace(x_min, x_max, 200)
+
+            for g in group_names:
+                if g not in group_vals:
+                    continue
+                vals = group_vals[g]
+                if len(vals) < 2:
+                    continue
+                kde = gaussian_kde(vals)
+                ys = kde(xs)
+                fig_dist.add_trace(
+                    go.Scatter(
+                        x=xs,
+                        y=ys,
+                        mode="lines",
+                        name=g,
+                        showlegend=(col_idx == 1),
+                        line=dict(color=group_colors.get(g)),
+                    ),
+                    row=1,
+                    col=col_idx
+                )
+        width_dist = max(400 * n_sig, 800)
+        height_dist = 500
+        fig_dist.update_layout(
+            title="Significant Peptides – Density Distributions per Peptide (3 groups each)",
+            width=width_dist,
+            height=height_dist
+        )
+        save_fig(fig_dist, "significant_peptides_distributions", width_dist, height_dist)
+        logging.info("Step 6.4: Distribution plots saved.")
+
+    logging.info("Step 6: Visualization of significant peptides completed.")
 except Exception as e:
     logging.error(f"Error during visualizations: {e}")
     sys.exit(1)
