@@ -70,4 +70,5 @@ dependencies:
   - openpyxl
   - et_xmlfile
   - scipy
+  - statsmodels
 prefix: /opt/anaconda3/envs/env_data_preparation
