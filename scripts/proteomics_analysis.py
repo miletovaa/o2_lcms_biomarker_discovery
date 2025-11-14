@@ -92,11 +92,9 @@ except Exception as e:
 try:
     zero_threshold = cfg.preprocessing.zero_threshold if cfg.preprocessing.zero_threshold is not None else 0.6
 
-    df[value_cols] = df[value_cols].replace("<LOQ", np.nan).astype(float)
+    zero_fractions = (df.eq(0.0) | df.isna()).sum(axis=1) / len(df)
 
-    loq_fraction = df[value_cols].isna().mean(axis=1)
-
-    df_filtered = df.loc[loq_fraction <= zero_threshold].reset_index(drop=True)
+    df_filtered = df[zero_fractions <= zero_threshold]
     logging.info("Step 2: Filtered peptides that have more than %d%% of '<LOQ': kept %d of %d", zero_threshold * 100, len(df_filtered), len(df))
     df = df_filtered.copy()
 except Exception as e:
@@ -311,13 +309,26 @@ try:
     }
 
     group_names = list(groups.keys())
+    peptide_to_protein = (
+        df.loc[:, ["Peptide", "Protein"]]
+        .dropna(subset=["Peptide"])
+        .drop_duplicates(subset=["Peptide"], keep="first")
+        .set_index("Peptide")["Protein"]
+        .to_dict()
+    )
+
+    def _title_with_protein(peptide_name: str) -> str:
+        protein = peptide_to_protein.get(peptide_name, "Unknown protein")
+        return f"{peptide_name}<br>{protein}"
+
+    peptide_titles = [_title_with_protein(p) for p in sig_peptides_fdr]
     
     # 7.2 Box plots
     fig_box = make_subplots(
         rows=1,
         cols=len(sig_peptides_fdr),
         shared_yaxes=False,
-        subplot_titles=sig_peptides_fdr
+        subplot_titles=peptide_titles
     )
     for col_idx, peptide in enumerate(sig_peptides_fdr, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
@@ -349,7 +360,7 @@ try:
         rows=1,
         cols=len(sig_peptides_fdr),
         shared_yaxes=False,
-        subplot_titles=sig_peptides_fdr
+        subplot_titles=peptide_titles
     )
     for col_idx, peptide in enumerate(sig_peptides_fdr, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
@@ -389,7 +400,7 @@ try:
         rows=1,
         cols=len(sig_peptides_fdr),
         shared_yaxes=False,
-        subplot_titles= sig_peptides_fdr
+        subplot_titles=peptide_titles
     )
     for col_idx, peptide in enumerate( sig_peptides_fdr, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
