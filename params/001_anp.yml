@@ -1,12 +1,12 @@
 parameters:
-  id: 002
-  description: "Settings matching the goal input RP file configuration."
+  id: 001
+  description: "Settings matching the reference input file configuration."
 
 data:
   # Input file name containing raw input data
-  file_name_input: "RP_quant_samples_area.csv"
+  file_name_input: "rawFile_full_ANP_quant_samples_area_MS1MS2.csv"
   # Input file name containing batch information (if applicable)
-  file_name_batch_info: "intermediateFile_normalized_RP.csv"
+  file_name_batch_info: null
   # Column name for feature identifiers in the input file
   feature_id_colname: "row ID"
   # Prefix for sample names in the input file (e.g., "BIO" for samples named like "BIO-PD01-RP")
@@ -14,7 +14,7 @@ data:
 
 preprocessing:
   # Internal Standard Column (Default: 11974)
-  is_col: "22104"
+  is_col: "11974"
   # Threshold for zero values (Default: 20%)
   zero_threshold: 0.2
 
@@ -27,3 +27,6 @@ logging:
   enabled: true
   # Options: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]. (Default: "INFO")
   level: "INFO"
+
+random_forest:
+  threshold: 0.56
