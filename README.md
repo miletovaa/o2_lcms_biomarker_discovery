@@ -1,22 +1,24 @@
-# Installation and usage
+# LC-HRMS Biomarker Discovery Pipeline
 
-```bash
-conda env create -f environment.yml
+> Project ID: p01
+> Project Name: lcms_biomarker_discovery
 
-conda activate env_data_preparation
+To do description
 
-conda env export > environment.yml
-```
+## Installation
 
-🧩 OPTION 1 — Using Anaconda Navigator (no command line)
+To do...
 
-1.	Open “Anaconda Navigator”
-2.	Go to the “Environments” tab on the left.
-3.	Click “Create” (bottom left corner).
-•	Name it: env_data_preparation
-•	Python version: 3.12 (recommended)
-4.	After the environment is created, click it -> select “Open Terminal” or go to “Channels -> conda-forge” (if available).
-5.	In the “Search Packages” field, type pandas, tick it, and click Apply.
-Do the same for matplotlib.
-6.	When done, go back to the Home tab → pick your new env env_data_preparation in the dropdown → launch Spyder or VS Code from there.
+## Steps
 
+1. Data Preprocessing (Step ID: `s01prep`)
+
+...
+
+2. Proteomics Statistical Analysis (Step ID: `s02protstat`)
+
+...
+
+3. Random Forest Modeling (Step ID: `s03rforest`)
+
+...
