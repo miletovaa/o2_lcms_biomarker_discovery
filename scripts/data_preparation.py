@@ -18,7 +18,6 @@ FILE_PATH_OUTPUT = cfg.get("FILE_PATH_OUTPUT", "./results")
 PARAMS_ID = cfg.get("PARAMS_ID", "000")
 IS_COL = str(cfg.preprocessing.is_col)
 
-
 # Step 0.2: Generating output directory
 try:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # avoid ':' for Windows
@@ -47,7 +46,8 @@ if cfg.logging.enabled:
 
 # Step 0.4: Load your CSV
 try:
-    df = pd.read_csv(FILE_PATH_INPUT + '/' + cfg.data.file_name_input)
+    input_path = os.path.join(FILE_PATH_INPUT, cfg.data.file_name_input)
+    df = pd.read_csv(input_path)
     logging.info(f"Input CSV file ({cfg.data.file_name_input}) loaded successfully.")
 except Exception as e:
     logging.error(f"Error loading CSV file: {e}")
@@ -400,35 +400,31 @@ try:
             "IS + Median Normalized"
         ]
     )
-    fig2.add_trace(go.Scatter(
-        y=rsd_raw.values,
-        mode='lines+markers',
-        name='Raw',
-        marker=dict(symbol='circle', opacity=0.5)
-    ), row=1, col=1)
-    fig2.add_trace(go.Scatter(
-        y=rsd_is.values,
-        mode='lines+markers',
-        name='IS Normalized',
-        marker=dict(symbol='x', opacity=0.7)
-    ), row=2, col=1)
-    fig2.add_trace(go.Scatter(
-        y=rsd_median_only.values,
-        mode='lines+markers',
-        name='Median Normalized (no IS)',
-        marker=dict(symbol='diamond', opacity=0.7)
-    ), row=3, col=1)
-    fig2.add_trace(go.Scatter(
-        y=rsd_final.values,
-        mode='lines+markers',
-        name='IS + Median Normalized',
-        marker=dict(symbol='square', opacity=0.9)
-    ), row=4, col=1)
+    def add_rsd_trace(fig, y_vals, feature_ids, name, symbol, row):
+        fig.add_trace(
+            go.Scatter(
+                x=list(range(len(y_vals))),
+                y=y_vals,
+                text=feature_ids,
+                hovertemplate="Feature: %{text}<br>RSD: %{y}<extra></extra>",
+                mode='lines+markers',
+                name=name,
+                marker=dict(symbol=symbol, opacity=0.7),
+            ),
+            row=row, col=1
+        )
+    add_rsd_trace(fig2, rsd_raw.values, rsd_raw.index, "Raw", "circle", 1)
+    add_rsd_trace(fig2, rsd_is.values, rsd_is.index, "IS Normalized", "x", 2)
+    add_rsd_trace(fig2, rsd_median_only.values, rsd_median_only.index, "Median Normalized", "diamond", 3)
+    add_rsd_trace(fig2, rsd_final.values, rsd_final.index, "IS + Median Normalized", "square", 4)
     fig2.update_layout(
         title="RSD per Feature comparison",
         width=700,
         height=1500
     )
+    fig2.update_yaxes(title_text="RSD (%)")
+    fig2.update_xaxes(title_text="Feature Index")
+    fig2.show()
     save_fig(fig2, "RSD_comparison_per_norm_20percMV")
 
     # Scatter-plot of RSDs comparison (separate grids)

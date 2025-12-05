@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.stats import probplot, shapiro, f_oneway, kruskal, gaussian_kde
 from statsmodels.stats.multitest import multipletests
+from sklearn.decomposition import PCA
 
 from utils.config import cfg
 
@@ -282,6 +283,13 @@ try:
     logging.info("Step 6: %d unique significant peptides from Kruskal/ANOVA after Bonferroni correction.", len(sig_peptides_fdr))
     logging.info("Step 6: %d unique significant peptides from Kruskal/ANOVA after FDR correction.", len(sig_peptides_bonf))
     logging.info("Step 6: %d unique significant peptides from Kruskal/ANOVA.", n_sig)
+
+
+    # if cfg.run.use_correction:
+    #     sig_peptides = sig_peptides_bonf
+
+    print(sig_peptides)
+    print(len(sig_peptides))
 except Exception as e:
     logging.error(f"Error during corrections: {e}")
     sys.exit(1)
@@ -321,16 +329,16 @@ try:
         protein = peptide_to_protein.get(peptide_name, "Unknown protein")
         return f"{peptide_name}<br>{protein}"
 
-    peptide_titles = [_title_with_protein(p) for p in sig_peptides_fdr]
+    peptide_titles = [_title_with_protein(p) for p in sig_peptides]
     
     # 7.2 Box plots
     fig_box = make_subplots(
         rows=1,
-        cols=len(sig_peptides_fdr),
+        cols=len(sig_peptides),
         shared_yaxes=False,
         subplot_titles=peptide_titles
     )
-    for col_idx, peptide in enumerate(sig_peptides_fdr, start=1):
+    for col_idx, peptide in enumerate(sig_peptides, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
         for g in group_names:
             values = row_pep[groups[g]].astype(float).values
@@ -361,11 +369,11 @@ try:
     # 7.3 Histograms: median bars
     fig_hist = make_subplots(
         rows=1,
-        cols=len(sig_peptides_fdr),
+        cols=len(sig_peptides),
         shared_yaxes=False,
         subplot_titles=peptide_titles
     )
-    for col_idx, peptide in enumerate(sig_peptides_fdr, start=1):
+    for col_idx, peptide in enumerate(sig_peptides, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
         for g in group_names:
             values = row_pep[groups[g]].astype(float).values
@@ -404,11 +412,11 @@ try:
     # 7.4 Distributions
     fig_dist = make_subplots(
         rows=1,
-        cols=len(sig_peptides_fdr),
+        cols=len(sig_peptides),
         shared_yaxes=False,
         subplot_titles=peptide_titles
     )
-    for col_idx, peptide in enumerate( sig_peptides_fdr, start=1):
+    for col_idx, peptide in enumerate( sig_peptides, start=1):
         row_pep = df.loc[df["Peptide"] == peptide].iloc[0]
 
         all_vals = []
@@ -465,4 +473,279 @@ try:
     logging.info("Step 7: Visualization of significant peptides completed.")
 except Exception as e:
     logging.error(f"Error during visualizations: {e}")
+    sys.exit(1)
+
+
+# Step 8: Discover the difference withing RBD groups of the significant peptides
+try:
+    rbd_groups = {
+        "A": [c for c in value_cols if c.endswith("RBDA")],
+        "B": [c for c in value_cols if c.endswith("RBDB")],
+        "C": [c for c in value_cols if c.endswith("RBDC")],
+    }
+
+    rbd_kw_results = []
+    rbd_descriptives = []
+
+    df_by_peptide = df.set_index("Peptide", drop=False)
+
+    for peptide in df_by_peptide.index.unique():
+        if peptide not in df_by_peptide.index:
+            continue
+        row_pep = df_by_peptide.loc[peptide]
+        if isinstance(row_pep, pd.DataFrame):
+            row_pep = row_pep.iloc[0]
+
+        subgroup_values = []
+        for subgroup, cols in rbd_groups.items():
+            vals = row_pep[cols].astype(float).values
+            vals = vals[~np.isnan(vals)]
+            if vals.size == 0:
+                continue
+            subgroup_values.append(vals)
+            rbd_descriptives.append({
+                "peptide": peptide,
+                "rbd_group": subgroup,
+                "n": len(vals),
+                "median": float(np.median(vals)),
+                "mean": float(np.mean(vals)),
+            })
+
+        if len(subgroup_values) < 2:
+            continue
+
+        stat, pval = kruskal(*subgroup_values)
+        rbd_kw_results.append({
+            "peptide": peptide,
+            "kw_stat": stat,
+            "kw_pval": pval,
+            "is_significant": pval < 0.05,
+        })
+
+    if rbd_kw_results:
+        rbd_kw_df = pd.DataFrame(rbd_kw_results)
+        rbd_kw_df.sort_values(by=["is_significant", "kw_pval", "peptide"], ascending=[False, True, True], inplace=True)
+        rbd_kw_df.to_csv(os.path.join(OUTPUT_DIR, "rbd_kruskal_by_peptide.csv"), index=False)
+
+    if rbd_descriptives:
+        rbd_desc_df = pd.DataFrame(rbd_descriptives)
+        rbd_desc_df.sort_values(by=["peptide", "rbd_group"], inplace=True)
+        rbd_desc_df.to_csv(os.path.join(OUTPUT_DIR, "rbd_group_descriptives.csv"), index=False)
+
+    # Additionally, keep separate RBD statistics for globally significant peptides (sig_peptides)
+    if rbd_kw_results and sig_peptides:
+        rbd_kw_sig_df = rbd_kw_df[rbd_kw_df["peptide"].isin(sig_peptides)].copy()
+        rbd_kw_sig_df.to_csv(os.path.join(OUTPUT_DIR, "rbd_kruskal_by_peptide_sig_peptides.csv"), index=False)
+
+    if rbd_descriptives and sig_peptides:
+        rbd_desc_sig_df = rbd_desc_df[rbd_desc_df["peptide"].isin(sig_peptides)].copy()
+        rbd_desc_sig_df.to_csv(os.path.join(OUTPUT_DIR, "rbd_group_descriptives_sig_peptides.csv"), index=False)
+
+    logging.info("Step 8: RBD subgroup analysis completed. %d peptides tested.", len(rbd_kw_results))
+
+except Exception as e:
+    logging.error(f"Error during RBD group analysis: {e}")
+    sys.exit(1)
+
+
+
+# Step 9: PCA on log-transformed and Pareto-scaled data
+try:
+    logging.info("Step 9: Starting PCA (log10(x + 1e-6) + Pareto scaling).")
+
+    # 9.1 Build data matrix: samples as rows, peptides as columns
+    # df currently has rows = peptides, columns = samples (value_cols)
+    # We restrict to value_cols (intensity columns) and transpose
+    data_matrix = df[value_cols].astype(float).T  # shape: (n_samples, n_peptides)
+    sample_ids = data_matrix.index.to_list()
+    if "Peptide" in df.columns:
+        raw_labels = df["Peptide"].astype(str).fillna("Unknown").tolist()
+    else:
+        raw_labels = [f"feature_{i}" for i in range(data_matrix.shape[1])]
+    if len(raw_labels) != data_matrix.shape[1]:
+        raw_labels = [f"feature_{i}" for i in range(data_matrix.shape[1])]
+    data_matrix.columns = raw_labels
+
+    # 9.2 Log10 transform: log10(x + 1e-6)
+    eps = 1.0e-6
+    data_log = np.log10(data_matrix + eps)
+
+    # 9.3 Pareto scaling: mean-center and divide by sqrt(std) per feature (column)
+    col_means = data_log.mean(axis=0)
+    col_std = data_log.std(axis=0, ddof=1)
+    # Avoid division by zero for constant features
+    col_std_safe = col_std.replace(0, np.nan)
+    pareto_scale = np.sqrt(col_std_safe)
+    pareto_scale = pareto_scale.replace(0, np.nan)
+    data_pareto = (data_log - col_means) / pareto_scale
+    # Any columns with NaNs (due to zero variance) will produce NaNs; drop them for PCA
+    data_pareto = data_pareto.dropna(axis=1, how="any")
+    retained_features = data_pareto.columns.to_list()
+
+    # 9.4 Run PCA
+    pca = PCA(n_components=2)
+    pca_scores = pca.fit_transform(data_pareto.values)  # shape: (n_samples, 2)
+
+    # 9.5 Build metadata for samples: infer group from column name prefix
+    sample_groups = []
+    for sid in sample_ids:
+        if sid.startswith("BIOPD"):
+            sample_groups.append("PD")
+        elif sid.startswith("RBD"):
+            sample_groups.append("RBD")
+        elif sid.startswith("CON"):
+            sample_groups.append("CON")
+        else:
+            sample_groups.append("Other")
+
+    pca_df = pd.DataFrame({
+        "sample": sample_ids,
+        "group": sample_groups,
+        "PC1": pca_scores[:, 0],
+        "PC2": pca_scores[:, 1],
+    })
+    pca_df.to_csv(os.path.join(OUTPUT_DIR, "pca_scores_samples.csv"), index=False)
+
+    component_labels = [f"PC{i+1}" for i in range(pca.n_components_)]
+    loadings_df = pd.DataFrame(
+        pca.components_.T,
+        columns=component_labels,
+        index=retained_features,
+    )
+    loadings_export = loadings_df.reset_index().rename(columns={"index": "feature"})
+    loadings_export.to_csv(os.path.join(OUTPUT_DIR, "pca_loadings_pc1_pc2.csv"), index=False)
+    loadings_df["loading_magnitude"] = np.sqrt(loadings_df["PC1"] ** 2 + loadings_df["PC2"] ** 2)
+    top_n_loadings = min(20, len(loadings_df))
+    top_loadings = loadings_df.nlargest(top_n_loadings, "loading_magnitude") if top_n_loadings else loadings_df
+
+    # 9.6 Plot PCA (PC1 vs PC2) with Plotly
+    group_colors_pca = {
+        "PD":  "#636EFA",
+        "RBD": "#EF553B",
+        "CON": "#00CC96",
+        "Other": "#AB63FA",
+    }
+
+    fig_pca = go.Figure()
+    for grp in sorted(pca_df["group"].unique()):
+        grp_df = pca_df[pca_df["group"] == grp]
+        fig_pca.add_trace(
+            go.Scatter(
+                x=grp_df["PC1"],
+                y=grp_df["PC2"],
+                mode="markers",
+                name=grp,
+                marker=dict(
+                    size=10,
+                    opacity=0.8,
+                    color=group_colors_pca.get(grp, "#888888"),
+                ),
+                text=grp_df["sample"],
+                hovertemplate="Sample: %{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>",
+            )
+        )
+
+    fig_pca.update_layout(
+        title="PCA of Samples (log10(x + 1e-6) + Pareto scaling)",
+        xaxis_title=f"PC1 ({pca.explained_variance_ratio_[0]*100:.1f}% var)",
+        yaxis_title=f"PC2 ({pca.explained_variance_ratio_[1]*100:.1f}% var)",
+        width=800,
+        height=700,
+    )
+
+    save_fig(fig_pca, "pca_samples_pc1_pc2", 800, 700)
+
+    if not loadings_df.empty:
+        fig_loadings = go.Figure()
+        for feature, row in top_loadings.iterrows():
+            fig_loadings.add_shape(
+                type="line",
+                x0=0,
+                y0=0,
+                x1=row["PC1"],
+                y1=row["PC2"],
+                line=dict(color="#BBBBBB", width=1),
+            )
+        fig_loadings.add_trace(
+            go.Scatter(
+                x=top_loadings["PC1"],
+                y=top_loadings["PC2"],
+                mode="markers+text",
+                text=top_loadings.index,
+                textposition="top center",
+                marker=dict(size=9, color="#333333"),
+                hovertemplate="Feature: %{text}<br>PC1 loading: %{x:.3f}<br>PC2 loading: %{y:.3f}<extra></extra>",
+                showlegend=False,
+            )
+        )
+        fig_loadings.update_layout(
+            title="PCA Loadings (PC1 vs PC2)",
+            xaxis_title="PC1 loading",
+            yaxis_title="PC2 loading",
+            xaxis=dict(zeroline=True, zerolinewidth=1, zerolinecolor="#333"),
+            yaxis=dict(zeroline=True, zerolinewidth=1, zerolinecolor="#333"),
+            width=800,
+            height=700,
+        )
+        save_fig(fig_loadings, "pca_loadings_pc1_pc2", 800, 700)
+
+        score_max = float(np.max(np.abs(pca_scores[:, :2]))) if pca_scores.size else 1.0
+        loading_max = float(np.max(np.abs(top_loadings[["PC1", "PC2"]].values))) if not top_loadings.empty else 1.0
+        loading_max = loading_max if loading_max != 0 else 1.0
+        biplot_scale = (score_max / loading_max) * 0.7 if loading_max else 1.0
+        scaled_loadings = top_loadings[["PC1", "PC2"]] * biplot_scale
+
+        fig_biplot = go.Figure()
+        for grp in sorted(pca_df["group"].unique()):
+            grp_df = pca_df[pca_df["group"] == grp]
+            fig_biplot.add_trace(
+                go.Scatter(
+                    x=grp_df["PC1"],
+                    y=grp_df["PC2"],
+                    mode="markers",
+                    name=f"{grp} samples",
+                    marker=dict(
+                        size=10,
+                        opacity=0.8,
+                        color=group_colors_pca.get(grp, "#888888"),
+                    ),
+                    text=grp_df["sample"],
+                    hovertemplate="Sample: %{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>",
+                )
+            )
+
+        for feature, row in scaled_loadings.iterrows():
+            fig_biplot.add_shape(
+                type="line",
+                x0=0,
+                y0=0,
+                x1=row["PC1"],
+                y1=row["PC2"],
+                line=dict(color="#444444", width=1),
+            )
+
+        fig_biplot.add_trace(
+            go.Scatter(
+                x=scaled_loadings["PC1"],
+                y=scaled_loadings["PC2"],
+                mode="markers+text",
+                text=scaled_loadings.index,
+                textposition="top center",
+                marker=dict(color="#444444", size=9, symbol="diamond"),
+                name="Feature loadings",
+                hovertemplate="Feature: %{text}<br>Scaled PC1 loading: %{x:.3f}<br>Scaled PC2 loading: %{y:.3f}<extra></extra>",
+            )
+        )
+
+        fig_biplot.update_layout(
+            title="PCA Biplot (PC1 vs PC2)",
+            xaxis_title=f"PC1 ({pca.explained_variance_ratio_[0]*100:.1f}% var)",
+            yaxis_title=f"PC2 ({pca.explained_variance_ratio_[1]*100:.1f}% var)",
+            width=900,
+            height=750,
+        )
+        save_fig(fig_biplot, "pca_biplot_pc1_pc2", 900, 750)
+    logging.info("Step 9: PCA plots and scores saved successfully.")
+except Exception as e:
+    logging.error(f"Error during PCA computation or plotting: {e}")
     sys.exit(1)
