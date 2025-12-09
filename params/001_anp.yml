@@ -30,3 +30,6 @@ logging:
 
 random_forest:
   threshold: 0.56
+  class_pair_to_model: 0 # 0: all pairwise, 1: PDvsCON, 2: PDvsRBD, 3: RBDvsCON
+  elbow_cutoff: 0.01
+  seed: 42
