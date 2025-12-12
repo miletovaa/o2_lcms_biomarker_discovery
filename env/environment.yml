@@ -1,4 +1,4 @@
-name: env_data_preparation
+name: lcms_biomarker_discovery
 channels:
   - conda-forge
   - bioconda

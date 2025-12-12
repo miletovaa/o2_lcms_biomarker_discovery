@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import yaml
 from dotenv import load_dotenv
+from datetime import datetime
 
 
 class DotDict(dict):
@@ -15,10 +16,16 @@ def _to_dotdict(x):
 
 load_dotenv()
 
+
+PROJECT_ID = os.getenv("PROJECT_ID", "p00")
+PROJECT_NAME = os.getenv("PROJECT_NAME", "test_project")
+
 FILE_PATH_INPUT = os.getenv("FILE_PATH_INPUT", "./data")
 FILE_PATH_OUTPUT = os.getenv("FILE_PATH_OUTPUT", "./results")
+
 PARAMS_ID = os.getenv("PARAMS_ID", "000")
-PROTEOMICS_PARAMS_ID = os.getenv("PROTEOMICS_PARAMS_ID", "003")
+PARAMS_NAME = os.getenv("PARAMS_NAME", "default")
+
 
 yml_candidates = list(Path("params").glob(f"{PARAMS_ID}_*.yml"))
 if not yml_candidates:
@@ -26,20 +33,26 @@ if not yml_candidates:
 with open(yml_candidates[0], "r", encoding="utf-8") as f:
     yml_cfg = _to_dotdict(yaml.safe_load(f) or {})
 
+# Generating output directory
+try:
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # avoid ':' for Windows
+    OUTPUT_DIR = os.path.join(FILE_PATH_OUTPUT, f"output_{PARAMS_ID}_{stamp}")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+except Exception as e:
+    print(f"Failed to create output directory: {e}")
 
-yml_candidates_proteomics = list(Path("params").glob(f"{PROTEOMICS_PARAMS_ID}_*.yml"))
-if not yml_candidates_proteomics:
-    raise FileNotFoundError(f"No params YAML found for ID {PROTEOMICS_PARAMS_ID} in ./params")
-with open(yml_candidates_proteomics[0], "r", encoding="utf-8") as f:
-    yml_cfg_proteomics = _to_dotdict(yaml.safe_load(f) or {})
 
 cfg = DotDict(
     {
-        "FILE_PATH_INPUT": FILE_PATH_INPUT,
-        "FILE_PATH_OUTPUT": FILE_PATH_OUTPUT,
+        "PROJECT_ID": PROJECT_ID,
+        "PROJECT_NAME": PROJECT_NAME,
+
         "PARAMS_ID": PARAMS_ID,
-        "PROTEOMICS_PARAMS_ID": PROTEOMICS_PARAMS_ID,
+        "PARAMS_NAME": PARAMS_NAME,
+
+        "FILE_PATH_INPUT": FILE_PATH_INPUT,
+        "OUTPUT_DIR": OUTPUT_DIR,
+        
         **yml_cfg,
-        **yml_cfg_proteomics,
     }
 )

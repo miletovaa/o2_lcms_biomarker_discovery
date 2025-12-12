@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Export Conda Env (env_data_preparation)",
+      "label": "Export Conda Env (lcms_biomarker_discovery)",
       "type": "shell",
-      "command": "conda run -n env_data_preparation conda env export --from-history --no-builds -f env/environment.yml",
+      "command": "conda run -n lcms_biomarker_discovery conda env export --from-history --no-builds -f env/environment.yml",
       "options": {
         "cwd": "${workspaceFolder}"
       },
